@@ -1,0 +1,245 @@
+<!doctype html>
+<html lang="en">
+<head>
+  <meta charset="utf-8" />
+  <title>3D Magical Door (click to open/close)</title>
+  <meta name="viewport" content="width=device-width,initial-scale=1" />
+  <style>
+    html,body { height:100%; margin:0; font-family:system-ui,Segoe UI,Arial;}
+    #container { width:100%; height:100vh; overflow:hidden; display:block; background: linear-gradient(180deg,#f8efff,#ffd9ee 60%); }
+    .ui {
+      position: absolute;
+      left: 16px;
+      top: 16px;
+      background: rgba(255,255,255,0.85);
+      padding: 10px 12px;
+      border-radius: 10px;
+      box-shadow: 0 6px 20px rgba(0,0,0,0.12);
+      font-size: 14px;
+    }
+    .ui b { display:block; margin-bottom:6px; }
+    .credit { position: absolute; right: 14px; bottom: 10px; font-size:12px; color:#333; background: rgba(255,255,255,0.6); padding:6px 8px; border-radius:8px;}
+    button { cursor:pointer; padding:6px 8px; border-radius:6px; border:1px solid rgba(0,0,0,0.08); background:#fff;}
+    @media (max-width:600px){
+      .ui { left: 8px; top: 8px; padding:8px; font-size:13px; }
+    }
+  </style>
+</head>
+<body>
+  <div id="container"></div>
+  <div class="ui">
+    <b>Magical Door (click to open/close)</b>
+    Click the pink door. Drag to orbit / scroll to zoom.
+    <div style="margin-top:8px;">
+      <button id="reset">Reset Camera</button>
+    </div>
+  </div>
+  <div class="credit">Stylized — not a direct replica</div>
+
+  <!-- Three.js as ES module -->
+  <script type="module">
+    import * as THREE from 'https://unpkg.com/three@0.153.0/build/three.module.js';
+    import { OrbitControls } from 'https://unpkg.com/three@0.153.0/examples/jsm/controls/OrbitControls.js';
+
+    // Scene + renderer
+    const container = document.getElementById('container');
+    const scene = new THREE.Scene();
+    scene.fog = new THREE.FogExp2(0xf9e9f5, 0.0022);
+
+    const renderer = new THREE.WebGLRenderer({ antialias:true });
+    renderer.setPixelRatio(window.devicePixelRatio);
+    renderer.setSize(container.clientWidth, container.clientHeight);
+    renderer.outputEncoding = THREE.sRGBEncoding;
+    container.appendChild(renderer.domElement);
+
+    // Camera
+    const camera = new THREE.PerspectiveCamera(45, container.clientWidth / container.clientHeight, 0.1, 1000);
+    camera.position.set(0, 1.6, 4.5);
+
+    // Controls
+    const controls = new OrbitControls(camera, renderer.domElement);
+    controls.target.set(0, 1.0, 0);
+    controls.enableDamping = true;
+    controls.dampingFactor = 0.08;
+    controls.minDistance = 1.5;
+    controls.maxDistance = 12;
+
+    // Lights
+    const hemi = new THREE.HemisphereLight(0xfff4fb, 0x7a7a9a, 0.85);
+    scene.add(hemi);
+    const dir = new THREE.DirectionalLight(0xffffff, 0.7);
+    dir.position.set(5, 10, 2);
+    dir.castShadow = true;
+    scene.add(dir);
+
+    // Ground (subtle)
+    const groundGeo = new THREE.PlaneGeometry(40,40);
+    const groundMat = new THREE.MeshStandardMaterial({ color: 0xfff0fb, metalness:0, roughness:1 });
+    const ground = new THREE.Mesh(groundGeo, groundMat);
+    ground.rotation.x = -Math.PI/2;
+    ground.position.y = -0.01;
+    scene.add(ground);
+
+    // Door frame
+    const frameGroup = new THREE.Group();
+    scene.add(frameGroup);
+
+    const frameOuterGeo = new THREE.BoxGeometry(1.5, 2.4, 0.22);
+    const frameOuterMat = new THREE.MeshPhysicalMaterial({ color: 0xffa9de, metalness:0.1, roughness:0.5, clearcoat:0.2 });
+    const frameOuter = new THREE.Mesh(frameOuterGeo, frameOuterMat);
+    frameOuter.position.set(0,1.2,0);
+    frameGroup.add(frameOuter);
+
+    // Inner cutout to make frame appear, we'll overlay an inner panel
+    const innerPanelGeo = new THREE.BoxGeometry(1.1, 2.0, 0.09);
+    const innerMat = new THREE.MeshPhysicalMaterial({ color: 0xffffff, metalness:0.05, roughness:0.6 });
+    const innerPanel = new THREE.Mesh(innerPanelGeo, innerMat);
+    innerPanel.position.set(0,1.2,0.065);
+    frameGroup.add(innerPanel);
+
+    // Door group (this rotates on hinge)
+    const doorPivot = new THREE.Group();
+    // position pivot along the left edge where hinge is
+    doorPivot.position.set(-0.55, 0, 0.11); // pivot point relative to frameGroup
+    frameGroup.add(doorPivot);
+
+    // Door mesh — built so its local origin is centered; we'll offset door mesh so pivot rotation is at left edge
+    const doorWidth = 1.1;
+    const doorHeight = 2.0;
+    const doorThickness = 0.06;
+
+    // door main body
+    const doorGeo = new THREE.BoxGeometry(doorWidth, doorHeight, doorThickness);
+    const doorMat = new THREE.MeshPhysicalMaterial({
+      color: 0xff8fcf, roughness:0.4, metalness:0.05, clearcoat:0.15, reflectivity:0.2
+    });
+    const doorMesh = new THREE.Mesh(doorGeo, doorMat);
+
+    // offset door mesh inside pivot group so it rotates around left edge; pivot at 0,0,0 so place door center at +doorWidth/2 along X
+    doorMesh.position.set(doorWidth/2, 1.2, 0.11 + 0.01); // y matches frame center (1.2)
+    doorPivot.add(doorMesh);
+
+    // decorative panels on door (two horizontal panels)
+    const panelGeo = new THREE.BoxGeometry(doorWidth - 0.18, (doorHeight-0.4)/2 - 0.06, 0.01);
+    const panelMaterial = new THREE.MeshPhongMaterial({ color: 0xffc6ea, shininess:60 });
+    const topPanel = new THREE.Mesh(panelGeo, panelMaterial);
+    const bottomPanel = topPanel.clone();
+    topPanel.position.set(doorWidth/2, 1.5, 0.14);
+    bottomPanel.position.set(doorWidth/2, 0.88, 0.14);
+    doorPivot.add(topPanel, bottomPanel);
+
+    // Door knob (round)
+    const knobGeo = new THREE.CylinderGeometry(0.05,0.05,0.06,24);
+    const knobMat = new THREE.MeshStandardMaterial({ color: 0xfff6d9, metalness:0.4, roughness:0.3 });
+    const knob = new THREE.Mesh(knobGeo, knobMat);
+    knob.rotation.x = Math.PI/2;
+    // place knob a bit right of center on the door face (so when door opens it's visible)
+    knob.position.set(doorWidth/2 - 0.18, 1.05, 0.16);
+    doorPivot.add(knob);
+
+    // Hinge visual (simple cylinders)
+    const hingeMat = new THREE.MeshStandardMaterial({ color:0x8b6b7a, metalness:0.6, roughness:0.35 });
+    for (let i=0;i<3;i++){
+      const h = new THREE.CylinderGeometry(0.02,0.02,0.05,16);
+      const mesh = new THREE.Mesh(h, hingeMat);
+      mesh.rotation.z = Math.PI/2;
+      mesh.position.set(-0.55, 1.6 - i*0.6, 0.11);
+      frameGroup.add(mesh);
+    }
+
+    // Add subtle emissive 'magical' ring behind door to hint teleporting
+    const ringGeo = new THREE.RingGeometry(0.65,0.8,64);
+    const ringMat = new THREE.MeshBasicMaterial({ color: 0xffd0f0, side: THREE.DoubleSide, transparent:true, opacity:0.12 });
+    const ring = new THREE.Mesh(ringGeo, ringMat);
+    ring.rotation.x = -Math.PI/2;
+    ring.position.set(0, 0.05, -0.3);
+    scene.add(ring);
+
+    // Handle click / raycast
+    const raycaster = new THREE.Raycaster();
+    const mouse = new THREE.Vector2();
+
+    let isOpen = false;
+    let animStart = null;
+    const animDuration = 600; // ms
+    let animFrom = 0;
+    let animTo = 0;
+    let isAnimating = false;
+
+    function toggleDoor() {
+      if (isAnimating) return;
+      isOpen = !isOpen;
+      animStart = performance.now();
+      animFrom = doorPivot.rotation.y;
+      // open by -90 degrees (rotate around Y negative to open away from camera)
+      animTo = isOpen ? -Math.PI/2 : 0;
+      isAnimating = true;
+    }
+
+    // click handler
+    function onPointerDown(event) {
+      // compute mouse normalized coords
+      const rect = renderer.domElement.getBoundingClientRect();
+      const clientX = event.clientX ?? (event.touches && event.touches[0].clientX);
+      const clientY = event.clientY ?? (event.touches && event.touches[0].clientY);
+      mouse.x = ((clientX - rect.left) / rect.width) * 2 - 1;
+      mouse.y = -((clientY - rect.top) / rect.height) * 2 + 1;
+
+      raycaster.setFromCamera(mouse, camera);
+      // check intersection with doorMesh and knob and panels
+      const intersects = raycaster.intersectObjects([doorMesh, knob, topPanel, bottomPanel], true);
+      if (intersects.length > 0) {
+        toggleDoor();
+      }
+    }
+
+    renderer.domElement.addEventListener('pointerdown', onPointerDown, { passive:true });
+    renderer.domElement.addEventListener('touchstart', onPointerDown, { passive:true });
+
+    // Reset button
+    document.getElementById('reset').addEventListener('click', () => {
+      controls.reset();
+      camera.position.set(0,1.6,4.5);
+      controls.target.set(0,1.0,0);
+    });
+
+    // handle resize
+    window.addEventListener('resize', onWindowResize);
+    function onWindowResize(){
+      const w = container.clientWidth;
+      const h = container.clientHeight;
+      camera.aspect = w/h;
+      camera.updateProjectionMatrix();
+      renderer.setSize(w,h);
+    }
+
+    // animate loop
+    const clock = new THREE.Clock();
+    function animate(time) {
+      requestAnimationFrame(animate);
+      controls.update();
+
+      // animate open/close with ease (cubic ease)
+      if (isAnimating && animStart !== null) {
+        const t = (performance.now() - animStart) / animDuration;
+        if (t >= 1) {
+          doorPivot.rotation.y = animTo;
+          isAnimating = false;
+          animStart = null;
+        } else {
+          // cubic easing in-out
+          const tt = t < 0.5 ? 4*t*t*t : 1 - Math.pow(-2*t + 2, 3)/2;
+          doorPivot.rotation.y = animFrom + (animTo - animFrom) * tt;
+        }
+      }
+
+      // tiny floating motion to ring
+      ring.rotation.z += 0.002;
+
+      renderer.render(scene, camera);
+    }
+    animate();
+
+  </script>
+</body>
+</html>
